@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍕 Pizza Radar Dashboard</title>
+    <style>
+        :root {
+            --primary: #ff5722;
+            --primary-hover: #e64a19;
+            --bg: #f8f9fa;
+            --card-bg: #ffffff;
+            --text: #212529;
+            --text-muted: #6c757d;
+            --error-bg: #f8d7da;
+            --error-text: #842029;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.5rem;
+        }
+
+        .btn-search {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            width: 100%;
+            box-shadow: 0 4px 6px rgba(255, 87, 34, 0.2);
+            transition: transform 0.1s, background-color 0.2s;
+        }
+
+        .btn-search:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-search:active {
+            transform: scale(0.98);
+        }
+
+        /* UI States */
+        .status-msg {
+            display: none;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        #loading {
+            background-color: #e2e3e5;
+            color: #383d41;
+            animation: pulse 1.5s infinite;
+        }
+
+        #error-box {
+            background-color: var(--error-bg);
+            color: var(--error-text);
+            border: 1px solid #f5c2c7;
+        }
+
+        /* Pizza Cards Grid */
+        #dashboard {
+            margin-top: 20px;
+        }
+
+        .pizza-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border-left: 5px solid var(--primary);
+            transition: transform 0.2s;
+        }
+
+        .pizza-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .pizza-card h3 {
+            margin: 0 0 8px 0;
+            font-size: 1.3rem;
+        }
+
+        .pizza-meta {
+            font-size: 0.95rem;
+            margin: 6px 0;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .rating {
+            color: #ffb300;
+            font-weight: bold;
+        }
+
+        .address {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>🍕 Pizza Radar</h1>
+            <p style="color: var(--text-muted);">Find the closest pizza joints in real-time</p>
+        </header>
+
+        <button class="btn-search" onclick="locateAndSearch()">Find Pizza Near Me</button>
+
+        <div id="loading" class="status-msg">📡 Scanning coordinates & fetching pizza profiles...</div>
+        <div id="error-box" class="status-msg"></div>
+
+        <main id="dashboard"></main>
+    </div>
+
+    <script>
+        // CHANGE THIS: Replace with your actual live Render backend domain once deployed
+        const BACKEND_URL = 'http://localhost:3000';
+
+        const dashboard = document.getElementById('dashboard');
+        const errorBox = document.getElementById('error-box');
+        const loading = document.getElementById('loading');
+
+        function setUIState(state, message = '') {
+            loading.style.display = 'none';
+            errorBox.style.display = 'none';
+
+            if (state === 'loading') {
+                loading.style.display = 'block';
+            } else if (state === 'error') {
+                errorBox.textContent = message;
+                errorBox.style.display = 'block';
+            }
+        }
+
+        function locateAndSearch() {
+            setUIState('clear');
+            dashboard.innerHTML = '';
+
+            // SOFTWARE COMPLETENESS: Geolocation support check
+            if (!navigator.geolocation) {
+                setUIState('error', 'Geolocation is not supported by your browser.');
+                return;
+            }
+
+            setUIState('loading');
+
+            // Request precise location from device
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    fetchPizzaData(latitude, longitude);
+                },
+                (geoError) => {
+                    // ROBUST ERROR HANDLING: Catch user denial or hardware failure
+                    if (geoError.code === geoError.PERMISSION_DENIED) {
+                        setUIState('error', 'Location permission denied. Please allow location access to find pizza.');
+                    } else {
+                        setUIState('error', 'Unable to retrieve your location. Please check your network/GPS settings.');
+                    }
+                },
+                { timeout: 8000 } // Abandon tracking after 8 seconds
+            );
+        }
+
+        async function fetchPizzaData(lat, lng) {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/pizza?lat=${lat}&lng=${lng}`);
+                
+                // Catch standard backend error objects (400, 500, 502)
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `Server responded with status ${response.status}`);
+                }
+
+                const data = await response.json();
+                setUIState('clear');
+
+                // Catch scenarios where JSON returns successfully but has an empty array
+                if (!data.results || data.results.length === 0) {
+                    dashboard.innerHTML = `
+                        <div style="text-align: center; margin-top: 40px; color: var(--text-muted);">
+                            <p style="font-size: 3rem; margin: 0;">🛑</p>
+                            <p>No pizza places detected within 2km of your location.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // MoSCoW: Iterating over clean, validated results
+                data.results.forEach(place => {
+                    const card = document.createElement('div');
+                    card.className = 'pizza-card';
+
+                    // SOFTWARE COMPLETENESS: Protect against XSS using textContent injection patterns
+                    const title = document.createElement('h3');
+                    title.textContent = place.name;
+
+                    const meta = document.createElement('div');
+                    meta.className = 'pizza-meta';
+                    
+                    const ratingSpan = document.createElement('span');
+                    ratingSpan.className = 'rating';
+                    ratingSpan.textContent = place.rating ? `⭐ ${place.rating}` : '⭐ No ratings yet';
+                    
+                    const totalRatings = document.createElement('span');
+                    totalRatings.style.color = 'var(--text-muted)';
+                    totalRatings.style.fontSize = '0.85rem';
+                    totalRatings.textContent = place.user_ratings_total ? `(${place.user_ratings_total} reviews)` : '';
+
+                    meta.appendChild(ratingSpan);
+                    meta.appendChild(totalRatings);
+
+                    const address = document.createElement('div');
+                    address.className = 'address';
+                    address.textContent = place.vicinity || 'Address unavailable';
+
+                    card.appendChild(title);
+                    card.appendChild(meta);
+                    card.appendChild(address);
+
+                    dashboard.appendChild(card);
+                });
+
+            } catch (err) {
+                // ROBUST ERROR HANDLING: Catch network disconnections entirely
+                setUIState('error', `Data Stream Error: ${err.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
